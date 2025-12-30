@@ -1,4 +1,4 @@
-import { open } from "./mod.ts";
+import { open } from "~/mod.ts";
 import { setTimeout } from "node:timers/promises";
 import * as z from "zod/mini";
 
