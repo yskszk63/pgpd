@@ -1,80 +1,23 @@
 import * as net from "node:net";
-import * as tls from "node:tls";
 import { Buffer } from "node:buffer";
 import * as crypt from "node:crypto";
 
-import * as proto from "pg-protocol";
 import * as z from "zod/mini";
 
-const zAuthenticationMD5Password = z.object({
-  salt: z.custom<Buffer>((v) => v instanceof Buffer),
-});
+import {
+  zAuthenticationMD5Password,
+  zDataRowMessage,
+  zParameterDescriptionMessage,
+  zRowDescriptionMessage,
+} from "./types.ts";
+import type { Connection } from "./conn.ts";
+import { connect } from "./conn.ts";
 
-const zParameterDescriptionMessage = z.object({
-  parameterCount: z.number(),
-  dataTypeIDs: z.array(z.number()),
-});
-
-const zRowDescriptionMessage = z.object({
-  fieldCount: z.number(),
-  fields: z.array(z.object({
-    name: z.string(),
-    tableID: z.number(),
-    columnID: z.number(),
-    dataTypeID: z.number(),
-    dataTypeSize: z.number(),
-    dataTypeModifier: z.number(),
-    format: z.union([z.literal("text"), z.literal("binary")]),
-  })),
-});
-
-const zDataRowMessage = z.object({
-  fieldCount: z.number(),
-  fields: z.array(z.unknown()),
-});
-
-async function wraptls(socket: net.Socket): Promise<net.Socket> {
-  socket.write(proto.serialize.requestSsl());
-  await new Promise<void>((resolve, reject) => {
-    socket.once("data", (buf) => {
-      if (buf[0] !== 0x53) {
-        reject(new Error("Server REPLY: requestSsl != S"));
-      }
-      resolve();
-    });
-  });
-
-  return tls.connect({ socket });
-}
-
-type BackendMessage = Parameters<Parameters<typeof proto.parse>[1]>[0];
-class ProtoStream extends ReadableStream<BackendMessage> {
-  constructor(conn: net.Socket) {
-    super({
-      start: (controller) => {
-        proto.parse(conn, (msg) => {
-          controller.enqueue(msg);
-        });
-      },
-    });
-  }
-}
-
-async function read(
-  reader: ReadableStreamDefaultReader<BackendMessage>,
-): Promise<BackendMessage> {
-  const { done, value } = await reader.read();
-  if (done) {
-    throw new Error();
-  }
-  return value;
-}
-
-function writePasswordMessageMd5(
-  conn: net.Socket,
+async function writePasswordMessageMd5(
+  conn: Connection,
   salt: Buffer,
   opts: OpenOpts,
-): void {
+): Promise<void> {
   const hasher = crypt.createHash("md5");
   hasher.update(opts.password).update(opts.user);
   const h1 = hasher.digest("hex");
@@ -82,28 +25,23 @@ function writePasswordMessageMd5(
   const hasher2 = crypt.createHash("md5");
   const h2 = hasher2.update(h1).update(salt).digest("hex");
 
-  conn.write(proto.serialize.password(`md5${h2}`));
+  await conn.write("password", `md5${h2}`);
 }
 
 async function handleAuthentication(
-  conn: net.Socket,
-  reader: ReadableStreamDefaultReader<BackendMessage>,
+  conn: Connection,
   opts: OpenOpts,
 ): Promise<void> {
-  while (true) {
-    const msg = await read(reader);
+  for await (const msg of conn.readUntilReady()) {
     switch (msg.name) {
       case "authenticationOk":
         return;
 
       case "authenticationMD5Password": {
         const { salt } = zAuthenticationMD5Password.parse(msg);
-        writePasswordMessageMd5(conn, salt, opts);
+        await writePasswordMessageMd5(conn, salt, opts);
         break;
       }
-
-      case "error":
-        throw msg;
 
       default:
         throw new Error(`Not implemented ${msg.name}`);
@@ -112,25 +50,12 @@ async function handleAuthentication(
 }
 
 async function recovery(
-  conn: net.Socket,
-  reader: ReadableStreamDefaultReader<BackendMessage>,
+  conn: Connection,
 ) {
-  conn.write(proto.serialize.sync());
+  await conn.write("sync");
 
-  while (true) {
-    const msg = await read(reader);
-    switch (msg.name) {
-      case "readyForQuery":
-        return;
-
-      case "error":
-        throw msg;
-
-      default:
-        console.log("DROP", msg);
-        // drop
-        break;
-    }
+  for await (const msg of conn.readUntilReady()) {
+    console.log("DROP", msg);
   }
 }
 
@@ -149,18 +74,14 @@ const zSelectTypeRow = z.tuple([
 ]);
 
 async function selectTypes(
-  conn: net.Socket,
-  reader: ReadableStreamDefaultReader<BackendMessage>,
+  conn: Connection,
 ): Promise<Type[]> {
   const sql =
     "SELECT t.oid, n.nspname, t.typname, format_type(t.oid, NULL) AS sql_type FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace ORDER BY t.oid";
-  conn.write(proto.serialize.query(sql));
+  await conn.write("query", sql);
 
-  let err: unknown;
   const types: Type[] = [];
-  loop:
-  while (true) {
-    const msg = await read(reader);
+  for await (const msg of conn.readUntilReady()) {
     switch (msg.name) {
       case "rowDescription":
       case "commandComplete":
@@ -178,21 +99,9 @@ async function selectTypes(
         break;
       }
 
-      case "readyForQuery":
-        break loop;
-
-      case "error":
-        //await recovery(conn, reader);
-        err = msg;
-        break;
-
       default:
         throw new Error(`Not implemented ${msg.name}`);
     }
-  }
-
-  if (typeof err !== "undefined") {
-    throw err;
   }
 
   return types;
@@ -214,24 +123,20 @@ export type DescribeResult = {
 };
 
 async function describe(
-  conn: net.Socket,
-  reader: ReadableStreamDefaultReader<BackendMessage>,
+  conn: Connection,
   types: Record<number, Type>,
   text: string,
 ): Promise<DescribeResult> {
-  conn.write(proto.serialize.parse({
+  await conn.write("parse", {
     text,
-  }));
-  conn.write(proto.serialize.describe({
+  });
+  await conn.write("describe", {
     type: "S",
-  }));
-  conn.write(proto.serialize.sync());
+  });
+  await conn.write("sync");
 
-  let err: unknown;
   const result: DescribeResult = {};
-  loop:
-  while (true) {
-    const msg = await read(reader);
+  for await (const msg of conn.readUntilReady()) {
     switch (msg.name) {
       case "parseComplete":
         break;
@@ -254,27 +159,15 @@ async function describe(
         break;
       }
 
-      case "readyForQuery":
-        break loop;
-
-      case "error":
-        //await recovery(conn, reader);
-        err = msg;
-        break;
-
       default:
         throw new Error(`Not implemented ${msg.name}`);
     }
   }
 
-  if (typeof err !== "undefined") {
-    throw err;
-  }
-
   return result;
 }
 
-type Client = {
+export type Client = {
   describe: (text: string) => Promise<DescribeResult>;
   [Symbol.asyncDispose]: () => Promise<void>;
 };
@@ -289,7 +182,7 @@ export type OpenOpts = {
 };
 
 export async function open(opts: OpenOpts): Promise<Client> {
-  using stack = new DisposableStack();
+  await using stack = new AsyncDisposableStack();
 
   const sock = await new Promise<net.Socket>((resolve, reject) => {
     const sock = net.connect({
@@ -299,30 +192,21 @@ export async function open(opts: OpenOpts): Promise<Client> {
     sock.once("connect", () => resolve(sock));
     sock.once("error", reject);
   });
-  stack.defer(() => sock.end());
+  stack.defer(() => void sock.end());
 
-  const conn = opts.tls === true ? await wraptls(sock) : sock;
-  const stream = new ProtoStream(conn);
-  const reader = stream.getReader();
+  const conn = await connect(sock, opts);
 
-  conn.write(proto.serialize.startup({
+  await conn.write("startup", {
     user: opts.user,
-  }));
-  await handleAuthentication(conn, reader, opts);
+  });
 
-  loop:
-  while (true) {
-    const msg = await read(reader);
+  await handleAuthentication(conn, opts);
+
+  for await (const msg of conn.readUntilReady()) {
     switch (msg.name) {
       case "parameterStatus":
       case "backendKeyData":
         break;
-
-      case "readyForQuery":
-        break loop;
-
-      case "error":
-        throw msg;
 
       default:
         throw new Error(`Not implemented ${msg.name}`);
@@ -330,13 +214,14 @@ export async function open(opts: OpenOpts): Promise<Client> {
   }
 
   const types: Record<number, Type> = Object.fromEntries(
-    (await selectTypes(conn, reader)).map((v) => [v.oid, v]),
+    (await selectTypes(conn)).map((v) => [v.oid, v]),
   );
 
   stack.move();
   return {
-    describe: describe.bind(null, conn, reader, types),
+    describe: describe.bind(null, conn, types),
     [Symbol.asyncDispose]: async () => {
+      await conn.write("end");
       await new Promise<void>((resolve) => sock.end(resolve));
     },
   };
