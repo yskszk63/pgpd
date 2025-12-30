@@ -30,14 +30,17 @@ class ProtoStream extends ReadableStream<BackendMessage> {
   }
 }
 
+type Names = keyof typeof proto.serialize;
+type SerializeOpts<K extends Names> = {
+  [P in Names]: Parameters<(typeof proto.serialize)[P]>;
+}[K];
 export type Connection = {
   readUntilReady: () => AsyncIterable<
     Exclude<BackendMessage, { name: "readyForQuery" } | { name: "error" }>
   >;
   write: <
-    K extends keyof typeof proto.serialize,
-    // deno-lint-ignore no-explicit-any
-    P extends any[] = Parameters<typeof proto.serialize[K]>,
+    K extends Names,
+    P extends SerializeOpts<K>,
   >(name: K, ...opts: P) => Promise<void>;
 };
 
@@ -60,40 +63,187 @@ export async function connect(
   const conn = opts.tls === true ? await wraptls(raw) : raw;
   const stream = new ProtoStream(conn);
   const reader = stream.getReader();
+
   let state: State = "READY";
+  let broken: boolean = false;
+  const throwIfBroken = () => {
+    if (broken) {
+      throw new Error("Broken");
+    }
+  };
 
   return {
     readUntilReady: async function* () {
+      throwIfBroken();
+
       let err: unknown;
       loop:
-      while (true) {
+      while (state !== "READY") {
         const { done, value } = await reader.read();
+        throwIfBroken();
         if (done) {
           throw new Error();
         }
 
-        switch (value.name) {
+        const name = value.name;
+        switch (name) {
           case "readyForQuery":
+            switch (state) {
+              case "WAIT_READY":
+                break;
+              default:
+                throw new Error(`Unexpected state: ${state} ${name}`);
+            }
+            state = "READY";
             break loop;
 
           case "error":
+            switch (state) {
+              case "WAIT_READY":
+              case "BUSY":
+                break;
+              default:
+                throw new Error(`Unexpected state: ${state} ${name}`, {
+                  cause: value,
+                });
+            }
+            state = "WAIT_READY";
             err = value;
+            break loop;
+
+          case "parseComplete":
+          case "bindComplete":
+          case "closeComplete":
+          case "noData":
+          case "portalSuspended":
+          case "replicationStart":
+          case "emptyQuery":
+          case "copyDone":
+          case "copyData":
+          case "rowDescription":
+          case "parameterDescription":
+          case "parameterStatus":
+          case "backendKeyData":
+          case "notification":
+          case "commandComplete":
+          case "dataRow":
+          case "copyInResponse":
+          case "copyOutResponse":
+          case "authenticationOk":
+          case "authenticationMD5Password":
+          case "authenticationCleartextPassword":
+          case "authenticationSASL":
+          case "authenticationSASLContinue":
+          case "authenticationSASLFinal":
+          case "notice":
+            yield value;
             break;
 
           default:
-            yield value;
-            break;
+            throw new Error(`Unreachable ${name satisfies never}`);
         }
       }
 
       if (typeof err !== "undefined") {
+        if (err instanceof proto.DatabaseError) {
+          switch (err.severity) {
+            case "FATAL":
+            case "PANIC":
+              broken = true;
+              throw err;
+            default:
+              break;
+          }
+        } else {
+          broken = true;
+          throw err;
+        }
+
+        // Recovery
+        let value: BackendMessage;
+        do {
+          const r = await reader.read();
+          if (r.done) {
+            throw new Error("DONE");
+          }
+          value = r.value;
+        } while (value.name !== "readyForQuery");
+        state = "READY";
         throw err;
       }
     },
 
     write: async (name, ...opts) => {
+      throwIfBroken();
+
       // @ts-ignore: supress `A spread argument must either have a tuple type or be passed to a rest parameter.`
       const buf = proto.serialize[name](...opts);
+
+      switch (name) {
+        case "startup":
+          switch (state) {
+            case "READY":
+              break;
+            default:
+              throw new Error(`Unexpected state: ${state} ${name}`);
+          }
+          state = "WAIT_READY";
+          break;
+
+        // SIMPLE QUERY
+        case "query":
+        case "copyData":
+        case "copyDone":
+        case "copyFail":
+          switch (state) {
+            case "READY":
+              break;
+            default:
+              throw new Error(`Unexpected state: ${state} ${name}`);
+          }
+          state = "WAIT_READY";
+          break;
+
+        // EXTENDED QUERY
+        case "parse":
+        case "describe":
+        case "bind":
+        case "execute":
+          switch (state) {
+            case "BUSY":
+            case "READY":
+              break;
+            default:
+              throw new Error(`Unexpected state: ${state} ${name}`);
+          }
+          state = "BUSY";
+          break;
+
+        case "sync":
+          switch (state) {
+            case "READY":
+            case "BUSY":
+              break;
+            default:
+              throw new Error(`Unexpected state: ${state} ${name}`);
+          }
+          state = "WAIT_READY";
+          break;
+
+        case "end":
+        case "password":
+        case "close":
+        case "flush":
+        case "cancel":
+        case "requestSsl":
+        case "sendSCRAMClientFinalMessage":
+        case "sendSASLInitialResponseMessage":
+          break;
+
+        default:
+          throw new Error(`Unreachable ${name satisfies never}`);
+      }
+
       if (!conn.write(buf)) {
         const { promise, resolve } = Promise.withResolvers<void>();
         conn.once("drain", resolve);

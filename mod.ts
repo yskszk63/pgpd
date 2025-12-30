@@ -49,16 +49,6 @@ async function handleAuthentication(
   }
 }
 
-async function recovery(
-  conn: Connection,
-) {
-  await conn.write("sync");
-
-  for await (const msg of conn.readUntilReady()) {
-    console.log("DROP", msg);
-  }
-}
-
 export type Type = {
   oid: number;
   schema: string;
