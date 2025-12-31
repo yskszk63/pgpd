@@ -1,5 +1,5 @@
 import { runPgServer } from "./helper.ts";
-import { open } from "~/mod.ts";
+import { open } from "~/client.ts";
 
 Deno.test("auth", async () => {
   await using pg = await runPgServer({ ssl: true });

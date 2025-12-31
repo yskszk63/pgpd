@@ -1,7 +1,7 @@
 import { assertEquals, assertRejects } from "@std/assert";
 import { runPgServer } from "./helper.ts";
 import type { PgServer } from "./helper.ts";
-import { open } from "~/mod.ts";
+import { open } from "~/client.ts";
 
 let srv: PgServer;
 
