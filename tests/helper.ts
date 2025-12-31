@@ -85,10 +85,13 @@ exec docker-entrypoint.sh postgres -cssl=on -cssl_cert_file="$fcert" -cssl_key_f
     `-ePOSTGRES_USER=${user}`,
     `-ePOSTGRES_PASSWORD=${password}`,
     "-ePOSTGRES_INITDB_ARGS=--auth-host=md5",
+    "-ePGDATA=/var/lib/postgresql/data",
     "--network",
     "bridge",
     "--mount",
     `type=tmpfs,target=/etc/ssl/postgres`,
+    "--mount",
+    `type=tmpfs,target=/var/lib/postgresql/data`,
     "--mount",
     `type=bind,source=${sockdir},target=/var/run/postgresql`,
     "postgres",
@@ -96,6 +99,8 @@ exec docker-entrypoint.sh postgres -cssl=on -cssl_cert_file="$fcert" -cssl_key_f
     "-c",
     script,
     "--",
+    "-cfsync=off",
+    "-cshared_buffers=8M",
   );
 
   stack.defer(() => docker("stop", containerId).then(() => {}));
