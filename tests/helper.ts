@@ -1,3 +1,4 @@
+import path from "node:path";
 import { setTimeout } from "node:timers/promises";
 
 import * as z from "zod/mini";
@@ -34,6 +35,7 @@ export type PgServer = {
   readonly database: string;
   readonly user: string;
   readonly password: string;
+  readonly sockdir: string;
   [Symbol.asyncDispose]: () => Promise<void>;
 };
 
@@ -43,6 +45,14 @@ export type RunOpts = {
 
 export async function runPgServer(opts?: RunOpts): Promise<PgServer> {
   await using stack = new AsyncDisposableStack();
+
+  const tmpdir = await Deno.makeTempDir({ prefix: "pgpd-test-sock-" });
+  stack.defer(() => Deno.remove(tmpdir, { recursive: true }));
+
+  await Deno.chmod(tmpdir, 0o777);
+
+  const sockdir = path.join(tmpdir, "sock");
+  Deno.mkdir(sockdir);
 
   let script: string;
   if (opts?.ssl === true) {
@@ -79,6 +89,8 @@ exec docker-entrypoint.sh postgres -cssl=on -cssl_cert_file="$fcert" -cssl_key_f
     "bridge",
     "--mount",
     `type=tmpfs,target=/etc/ssl/postgres`,
+    "--mount",
+    `type=bind,source=${sockdir},target=/var/run/postgresql`,
     "postgres",
     "bash",
     "-c",
@@ -86,7 +98,7 @@ exec docker-entrypoint.sh postgres -cssl=on -cssl_cert_file="$fcert" -cssl_key_f
     "--",
   );
 
-  stack.defer(() => docker("kill", containerId).then(() => {}));
+  stack.defer(() => docker("stop", containerId).then(() => {}));
 
   const data = await docker(
     "container",
@@ -118,6 +130,8 @@ exec docker-entrypoint.sh postgres -cssl=on -cssl_cert_file="$fcert" -cssl_key_f
     await setTimeout(100);
   }
 
+  //console.log(await Deno.stat(sockdir + "/.s.PGSQL.5432"));
+
   const defer = stack.move();
 
   return {
@@ -126,6 +140,7 @@ exec docker-entrypoint.sh postgres -cssl=on -cssl_cert_file="$fcert" -cssl_key_f
     database,
     user,
     password,
+    sockdir,
     [Symbol.asyncDispose]: async () => {
       await using _ = defer;
     },

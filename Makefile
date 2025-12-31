@@ -3,4 +3,4 @@
 nop:
 
 test:
-	deno test --allow-run=docker --allow-net
+	deno test --allow-run=docker --allow-net --allow-write=/tmp --allow-read=/tmp

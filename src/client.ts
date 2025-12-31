@@ -1,6 +1,8 @@
+import * as process from "node:process";
 import * as net from "node:net";
 import { Buffer } from "node:buffer";
 import * as crypt from "node:crypto";
+import * as fs from "node:fs/promises";
 
 import * as z from "zod/mini";
 
@@ -12,6 +14,17 @@ import {
 } from "./types.ts";
 import type { Connection, ConnectOpts } from "./conn.ts";
 import { connect, FatalError } from "./conn.ts";
+import { parse as parseUrl } from "./url.ts";
+import path from "node:path";
+
+export type OpenOpts = ConnectOpts & {
+  host: string;
+  port?: number | undefined;
+};
+
+function isUds(opts: OpenOpts): boolean {
+  return opts.host.startsWith("/");
+}
 
 async function writePasswordMessageMd5(
   conn: Connection,
@@ -158,25 +171,52 @@ async function describe(
   return result;
 }
 
-export type OpenOpts = ConnectOpts & {
-  host: string;
-  port: number;
-};
+const DEFAULT_PORT = 5432;
+
+function connectTcp(opts: OpenOpts): Promise<net.Socket> {
+  return new Promise<net.Socket>((resolve, reject) => {
+    const sock = net.connect({
+      host: opts.host,
+      port: opts.port ?? DEFAULT_PORT,
+    });
+    sock.once("connect", () => resolve(sock));
+    sock.once("error", reject);
+  });
+}
+
+async function connectUds(opts: OpenOpts): Promise<net.Socket> {
+  const p = path.join(opts.host, `.s.PGSQL.${opts.port ?? DEFAULT_PORT}`);
+  // NOTE:
+  // Deno needs --allow-read for UDS connect, but net.connect({ path })
+  // does not prompt for it. Explicit stat() makes the permission error visible.
+  await fs.stat(p);
+  return new Promise<net.Socket>((resolve, reject) => {
+    const sock = net.connect({
+      path: p,
+    });
+    sock.once("connect", () => resolve(sock));
+    sock.once("error", reject);
+  });
+}
+
+async function connectSocket(opts: OpenOpts): Promise<net.Socket> {
+  if (isUds(opts)) {
+    return await connectUds(opts);
+  }
+  return await connectTcp(opts);
+}
 
 async function tryConnectAuthenticate(
   opts: OpenOpts,
 ): Promise<[net.Socket, Connection]> {
   await using stack = new AsyncDisposableStack();
 
-  const sock = await new Promise<net.Socket>((resolve, reject) => {
-    const sock = net.connect({
-      host: opts.host,
-      port: opts.port,
-    });
-    sock.once("connect", () => resolve(sock));
-    sock.once("error", reject);
-  });
+  const sock = await connectSocket(opts);
   stack.defer(() => void sock.end());
+
+  if (typeof opts.sslmode === "undefined" && isUds(opts)) {
+    opts.sslmode = "disable";
+  }
 
   const conn = await connect(sock, opts);
 
@@ -217,7 +257,17 @@ export type Client = {
   [Symbol.asyncDispose]: () => Promise<void>;
 };
 
-export async function open(opts: OpenOpts): Promise<Client> {
+export async function open(
+  opts: OpenOpts | string | undefined = process.env["DATABASE_URL"],
+): Promise<Client> {
+  if (typeof opts === "undefined") {
+    throw new Error(`no DATABASE_URL`);
+  }
+
+  if (typeof opts === "string") {
+    opts = parseUrl(opts);
+  }
+
   await using stack = new AsyncDisposableStack();
 
   const [sock, conn] = await connectAuthenticate(opts);
