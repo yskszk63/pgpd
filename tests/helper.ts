@@ -37,18 +37,30 @@ export type PgServer = {
   [Symbol.asyncDispose]: () => Promise<void>;
 };
 
-export type RunOpts = {};
+export type RunOpts = {
+  ssl?: boolean | undefined;
+};
 
-export async function runPgServer(opts: RunOpts): Promise<PgServer> {
+export async function runPgServer(opts?: RunOpts): Promise<PgServer> {
   await using stack = new AsyncDisposableStack();
 
-  const script = `set -e
-openssl req -new -x509 -nodes -days 1 -subj "/CN=test" -out /etc/ssl/postgres/server.crt -keyout /etc/ssl/postgres/server.key
-chmod 0400 /etc/ssl/postgres/server.key
-chown postgres:postgres /etc/ssl/postgres/server.key
-exec docker-entrypoint.sh "$@"
-`;
+  let script: string;
+  if (opts?.ssl === true) {
+    script = `set -e
+fcert=/etc/ssl/postgres/server.crt
+fkey=/etc/ssl/postgres/server.key
 
+[[ -f "$fcert" ]] || {
+  openssl req -new -x509 -nodes -days 1 -subj "/CN=test" -out "$fcert" -keyout "$fkey"
+  chmod 0400 /etc/ssl/postgres/server.key
+  chown postgres:postgres /etc/ssl/postgres/server.key
+}
+
+exec docker-entrypoint.sh postgres -cssl=on -cssl_cert_file="$fcert" -cssl_key_file="$fkey"
+`;
+  } else {
+    script = "exec docker-entrypoint.sh postgres";
+  }
   // $PGDATA/postgresql.conf
 
   const database = "postgres";
@@ -72,13 +84,6 @@ exec docker-entrypoint.sh "$@"
     "-c",
     script,
     "--",
-    "postgres",
-    "-c",
-    "ssl=on",
-    "-c",
-    "ssl_cert_file=/etc/ssl/postgres/server.crt",
-    "-c",
-    "ssl_key_file=/etc/ssl/postgres/server.key",
   );
 
   stack.defer(() => docker("kill", containerId).then(() => {}));

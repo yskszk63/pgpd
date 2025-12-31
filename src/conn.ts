@@ -3,7 +3,16 @@ import type * as stream from "node:stream";
 
 import * as proto from "pg-protocol";
 
-async function wraptls(raw: stream.Duplex): Promise<stream.Duplex> {
+export type SslMode =
+  | "disable"
+  | "require"
+  | "verify-ca"
+  | "verify-full";
+
+async function wraptls(
+  mode: Exclude<SslMode, "disable">,
+  raw: stream.Duplex,
+): Promise<stream.Duplex> {
   raw.write(proto.serialize.requestSsl());
   await new Promise<void>((resolve, reject) => {
     raw.once("data", (buf) => {
@@ -14,7 +23,21 @@ async function wraptls(raw: stream.Duplex): Promise<stream.Duplex> {
     });
   });
 
-  return tls.connect({ socket: raw });
+  const opts: tls.ConnectionOptions = {
+    socket: raw,
+  };
+  switch (mode) {
+    case "require":
+      opts.rejectUnauthorized = false;
+      break;
+    case "verify-ca":
+      opts.checkServerIdentity = () => void 0;
+      break;
+    case "verify-full":
+      break;
+  }
+
+  return tls.connect(opts);
 }
 
 type BackendMessage = Parameters<Parameters<typeof proto.parse>[1]>[0];
@@ -45,7 +68,7 @@ export type Connection = {
 };
 
 export type ConnectOpts = {
-  tls?: boolean | undefined;
+  sslmode?: SslMode | undefined;
   user: string;
   password: string;
   database?: string | undefined;
@@ -62,7 +85,8 @@ export async function connect(
   raw: stream.Duplex,
   opts: ConnectOpts,
 ): Promise<Connection> {
-  const conn = opts.tls === true ? await wraptls(raw) : raw;
+  const sslmode = opts.sslmode ?? "verify-full";
+  const conn = sslmode !== "disable" ? await wraptls(sslmode, raw) : raw;
   const stream = new ProtoStream(conn);
   const reader = stream.getReader();
 

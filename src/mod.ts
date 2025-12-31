@@ -10,7 +10,7 @@ import {
   zParameterDescriptionMessage,
   zRowDescriptionMessage,
 } from "./types.ts";
-import type { Connection } from "./conn.ts";
+import type { Connection, ConnectOpts } from "./conn.ts";
 import { connect, FatalError } from "./conn.ts";
 
 async function writePasswordMessageMd5(
@@ -158,13 +158,9 @@ async function describe(
   return result;
 }
 
-export type OpenOpts = {
+export type OpenOpts = ConnectOpts & {
   host: string;
   port: number;
-  tls?: boolean | undefined;
-  user: string;
-  password: string;
-  database?: string | undefined;
 };
 
 async function tryConnectAuthenticate(

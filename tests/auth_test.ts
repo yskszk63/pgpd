@@ -1,0 +1,14 @@
+import { runPgServer } from "./helper.ts";
+import { open } from "~/mod.ts";
+
+Deno.test("auth", async () => {
+  await using pg = await runPgServer({ ssl: true });
+  await using _ = await open({
+    host: pg.addr,
+    port: pg.port,
+    user: pg.user,
+    sslmode: "require",
+    password: pg.password,
+    database: pg.database,
+  });
+});

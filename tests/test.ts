@@ -6,7 +6,7 @@ import { open } from "~/mod.ts";
 let srv: PgServer;
 
 Deno.test.beforeAll(async () => {
-  srv = await runPgServer({});
+  srv = await runPgServer();
 });
 
 Deno.test.afterAll(async () => {
@@ -20,6 +20,7 @@ Deno.test("test", async () => {
     host: pg.addr,
     port: pg.port,
     user: pg.user,
+    sslmode: "disable",
     password: pg.password,
     database: pg.database,
   });
@@ -96,6 +97,7 @@ Deno.test("testError", async () => {
     host: pg.addr,
     port: pg.port,
     user: pg.user,
+    sslmode: "disable",
     password: pg.password,
     database: pg.database,
   });
@@ -113,6 +115,7 @@ Deno.test("testNoResult", async () => {
     host: pg.addr,
     port: pg.port,
     user: pg.user,
+    sslmode: "disable",
     password: pg.password,
     database: pg.database,
   });
