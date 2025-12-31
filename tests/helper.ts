@@ -37,8 +37,7 @@ export type PgServer = {
   [Symbol.asyncDispose]: () => Promise<void>;
 };
 
-export type RunOpts = {
-};
+export type RunOpts = {};
 
 export async function runPgServer(opts: RunOpts): Promise<PgServer> {
   await using stack = new AsyncDisposableStack();
@@ -50,7 +49,7 @@ chown postgres:postgres /etc/ssl/postgres/server.key
 exec docker-entrypoint.sh "$@"
 `;
 
-// $PGDATA/postgresql.conf
+  // $PGDATA/postgresql.conf
 
   const database = "postgres";
   const user = "postgres";

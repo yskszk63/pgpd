@@ -11,7 +11,7 @@ import {
   zRowDescriptionMessage,
 } from "./types.ts";
 import type { Connection } from "./conn.ts";
-import { connect } from "./conn.ts";
+import { connect, FatalError } from "./conn.ts";
 
 async function writePasswordMessageMd5(
   conn: Connection,
@@ -108,7 +108,7 @@ export type DescribeResultRow = {
 };
 
 export type DescribeResult = {
-  parameters?: DescribeResultParameter[] | undefined;
+  parameters: DescribeResultParameter[];
   rows?: DescribeResultRow[] | undefined;
 };
 
@@ -125,10 +125,11 @@ async function describe(
   });
   await conn.write("sync");
 
-  const result: DescribeResult = {};
+  const result: DescribeResult = { parameters: [] };
   for await (const msg of conn.readUntilReady()) {
     switch (msg.name) {
       case "parseComplete":
+      case "noData":
         break;
 
       case "parameterDescription": {
@@ -157,11 +158,6 @@ async function describe(
   return result;
 }
 
-export type Client = {
-  describe: (text: string) => Promise<DescribeResult>;
-  [Symbol.asyncDispose]: () => Promise<void>;
-};
-
 export type OpenOpts = {
   host: string;
   port: number;
@@ -171,7 +167,9 @@ export type OpenOpts = {
   database?: string | undefined;
 };
 
-export async function open(opts: OpenOpts): Promise<Client> {
+async function tryConnectAuthenticate(
+  opts: OpenOpts,
+): Promise<[net.Socket, Connection]> {
   await using stack = new AsyncDisposableStack();
 
   const sock = await new Promise<net.Socket>((resolve, reject) => {
@@ -191,6 +189,42 @@ export async function open(opts: OpenOpts): Promise<Client> {
   });
 
   await handleAuthentication(conn, opts);
+
+  stack.move();
+
+  return [sock, conn];
+}
+
+async function connectAuthenticate(
+  opts: OpenOpts,
+): Promise<[net.Socket, Connection]> {
+  const maxRetry = 5;
+  let attempt = 0;
+
+  while (true) {
+    try {
+      return await tryConnectAuthenticate(opts);
+    } catch (e) {
+      if (attempt++ > maxRetry) {
+        throw e;
+      }
+
+      if (!(e instanceof FatalError)) {
+        throw e;
+      }
+    }
+  }
+}
+
+export type Client = {
+  describe: (text: string) => Promise<DescribeResult>;
+  [Symbol.asyncDispose]: () => Promise<void>;
+};
+
+export async function open(opts: OpenOpts): Promise<Client> {
+  await using stack = new AsyncDisposableStack();
+
+  const [sock, conn] = await connectAuthenticate(opts);
 
   for await (const msg of conn.readUntilReady()) {
     switch (msg.name) {

@@ -51,6 +51,8 @@ export type ConnectOpts = {
   database?: string | undefined;
 };
 
+export class FatalError extends Error {}
+
 type State =
   | "READY"
   | "BUSY"
@@ -150,7 +152,7 @@ export async function connect(
             case "FATAL":
             case "PANIC":
               broken = true;
-              throw err;
+              throw new FatalError(err.message, { cause: err });
             default:
               break;
           }

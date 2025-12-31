@@ -1,9 +1,20 @@
 import { assertEquals, assertRejects } from "@std/assert";
 import { runPgServer } from "./helper.ts";
+import type { PgServer } from "./helper.ts";
 import { open } from "~/mod.ts";
 
+let srv: PgServer;
+
+Deno.test.beforeAll(async () => {
+  srv = await runPgServer({});
+});
+
+Deno.test.afterAll(async () => {
+  await using _ = srv;
+});
+
 Deno.test("test", async () => {
-  await using pg = await runPgServer({});
+  const pg = srv;
 
   await using client = await open({
     host: pg.addr,
@@ -76,11 +87,38 @@ Deno.test("test", async () => {
       },
     ],
   });
-  await assertRejects(() =>
-    client.describe("SELECT $1::text, $2::int as a, $3::int as a from x")
-  );
-  const result2 = await client.describe(
-    "SELECT $1::text, $2::int as a, $3::int as a",
-  );
+});
+
+Deno.test("testError", async () => {
+  const pg = srv;
+
+  await using client = await open({
+    host: pg.addr,
+    port: pg.port,
+    user: pg.user,
+    password: pg.password,
+    database: pg.database,
+  });
+
+  const result = await client.describe("SELECT $1::text");
+  await assertRejects(() => client.describe("SELECT $1::textx"));
+  const result2 = await client.describe("SELECT $1::text");
   assertEquals(result2, result);
+});
+
+Deno.test("testNoResult", async () => {
+  const pg = srv;
+
+  await using client = await open({
+    host: pg.addr,
+    port: pg.port,
+    user: pg.user,
+    password: pg.password,
+    database: pg.database,
+  });
+
+  const result = await client.describe("ROLLBACK");
+  assertEquals(result, {
+    parameters: [],
+  });
 });
