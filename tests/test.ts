@@ -1,12 +1,9 @@
-import { open } from "~/mod.ts";
+import { assertEquals, assertRejects } from "@std/assert";
 import { runPgServer } from "./helper.ts";
+import { open } from "~/mod.ts";
 
 Deno.test("test", async () => {
   await using pg = await runPgServer({});
-
-  const { assertEquals, assertRejects } = await import(
-    "@std/assert"
-  );
 
   await using client = await open({
     host: pg.addr,
