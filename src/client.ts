@@ -3,6 +3,7 @@ import * as net from "node:net";
 import { Buffer } from "node:buffer";
 import * as crypt from "node:crypto";
 import * as fs from "node:fs/promises";
+import path from "node:path";
 
 import * as z from "zod/mini";
 
@@ -12,25 +13,27 @@ import {
   zParameterDescriptionMessage,
   zRowDescriptionMessage,
 } from "./types.ts";
-import type { Connection, ConnectOpts } from "./conn.ts";
+import type { Connection } from "./conn.ts";
 import { connect, FatalError } from "./conn.ts";
 import { parse as parseUrl } from "./url.ts";
-import path from "node:path";
+import { checkAndFillDefault } from "./opts.ts";
+import type { CheckedOpts, Opts } from "./opts.ts";
 
-export type OpenOpts = ConnectOpts & {
-  host: string;
-  port?: number | undefined;
-};
+export type { Opts };
 
-function isUds(opts: OpenOpts): boolean {
-  return opts.host.startsWith("/");
+function isUds(opts: CheckedOpts): boolean {
+  return opts?.host?.startsWith("/") ?? false;
 }
 
 async function writePasswordMessageMd5(
   conn: Connection,
   salt: Buffer,
-  opts: OpenOpts,
+  opts: CheckedOpts,
 ): Promise<void> {
+  if (typeof opts.password === "undefined") {
+    throw new Error("password not specified");
+  }
+
   const hasher = crypt.createHash("md5");
   hasher.update(opts.password).update(opts.user);
   const h1 = hasher.digest("hex");
@@ -43,7 +46,7 @@ async function writePasswordMessageMd5(
 
 async function handleAuthentication(
   conn: Connection,
-  opts: OpenOpts,
+  opts: CheckedOpts,
 ): Promise<void> {
   for await (const msg of conn.readUntilReady()) {
     switch (msg.name) {
@@ -173,7 +176,7 @@ async function describe(
 
 const DEFAULT_PORT = 5432;
 
-function connectTcp(opts: OpenOpts): Promise<net.Socket> {
+function connectTcp(opts: CheckedOpts): Promise<net.Socket> {
   return new Promise<net.Socket>((resolve, reject) => {
     const sock = net.connect({
       host: opts.host,
@@ -184,7 +187,7 @@ function connectTcp(opts: OpenOpts): Promise<net.Socket> {
   });
 }
 
-async function connectUds(opts: OpenOpts): Promise<net.Socket> {
+async function connectUds(opts: CheckedOpts): Promise<net.Socket> {
   const p = path.join(opts.host, `.s.PGSQL.${opts.port ?? DEFAULT_PORT}`);
   // NOTE:
   // Deno needs --allow-read for UDS connect, but net.connect({ path })
@@ -199,7 +202,7 @@ async function connectUds(opts: OpenOpts): Promise<net.Socket> {
   });
 }
 
-async function connectSocket(opts: OpenOpts): Promise<net.Socket> {
+async function connectSocket(opts: CheckedOpts): Promise<net.Socket> {
   if (isUds(opts)) {
     return await connectUds(opts);
   }
@@ -207,16 +210,12 @@ async function connectSocket(opts: OpenOpts): Promise<net.Socket> {
 }
 
 async function tryConnectAuthenticate(
-  opts: OpenOpts,
+  opts: CheckedOpts,
 ): Promise<[net.Socket, Connection]> {
   await using stack = new AsyncDisposableStack();
 
   const sock = await connectSocket(opts);
   stack.defer(() => void sock.end());
-
-  if (typeof opts.sslmode === "undefined" && isUds(opts)) {
-    opts.sslmode = "disable";
-  }
 
   const conn = await connect(sock, opts);
 
@@ -232,7 +231,7 @@ async function tryConnectAuthenticate(
 }
 
 async function connectAuthenticate(
-  opts: OpenOpts,
+  opts: CheckedOpts,
 ): Promise<[net.Socket, Connection]> {
   const maxRetry = 5;
   let attempt = 0;
@@ -258,7 +257,7 @@ export type Client = {
 };
 
 export async function open(
-  opts: OpenOpts | string | undefined = process.env["DATABASE_URL"],
+  opts: Opts | string | undefined = process.env["DATABASE_URL"],
 ): Promise<Client> {
   if (typeof opts === "undefined") {
     throw new Error(`no DATABASE_URL`);
@@ -268,9 +267,13 @@ export async function open(
     opts = parseUrl(opts);
   }
 
+  const checked = checkAndFillDefault(opts);
+
   await using stack = new AsyncDisposableStack();
 
-  const [sock, conn] = await connectAuthenticate(opts);
+  const [sock, conn] = await connectAuthenticate(checked);
+  stack.defer(() => new Promise((resolve) => sock.end(resolve)));
+  stack.defer(() => conn.write("end"));
 
   for await (const msg of conn.readUntilReady()) {
     switch (msg.name) {
@@ -287,12 +290,11 @@ export async function open(
     (await selectTypes(conn)).map((v) => [v.oid, v]),
   );
 
-  stack.move();
+  const defer = stack.move();
   return {
     describe: describe.bind(null, conn, types),
     [Symbol.asyncDispose]: async () => {
-      await conn.write("end");
-      await new Promise<void>((resolve) => sock.end(resolve));
+      await using _ = defer;
     },
   };
 }

@@ -3,11 +3,7 @@ import type * as stream from "node:stream";
 
 import * as proto from "pg-protocol";
 
-export type SslMode =
-  | "disable"
-  | "require"
-  | "verify-ca"
-  | "verify-full";
+import type { CheckedOpts, SslMode } from "./opts.ts";
 
 async function wraptls(
   mode: Exclude<SslMode, "disable">,
@@ -67,13 +63,6 @@ export type Connection = {
   >(name: K, ...opts: P) => Promise<void>;
 };
 
-export type ConnectOpts = {
-  sslmode?: SslMode | undefined;
-  user: string;
-  password: string;
-  database?: string | undefined;
-};
-
 export class FatalError extends Error {}
 
 type State =
@@ -83,7 +72,7 @@ type State =
 
 export async function connect(
   raw: stream.Duplex,
-  opts: ConnectOpts,
+  opts: CheckedOpts,
 ): Promise<Connection> {
   const sslmode = opts.sslmode ?? "verify-full";
   const conn = sslmode !== "disable" ? await wraptls(sslmode, raw) : raw;

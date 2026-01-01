@@ -1,6 +1,6 @@
-import type { OpenOpts } from "./client.ts";
+import type { Opts } from "./opts.ts";
 
-export function parse(text: string): OpenOpts {
+export function parse(text: string): Opts {
   const url = new URL(text);
   if (url.protocol !== "postgres:") {
     throw new Error(`Invalid url: ${url.href}`);
@@ -29,7 +29,7 @@ export function parse(text: string): OpenOpts {
   const user = url.searchParams.get("user") ?? url.username;
   const password = url.searchParams.get("password") ?? url.password;
 
-  let sslmode: OpenOpts["sslmode"];
+  let sslmode: Opts["sslmode"];
   switch (url.searchParams.get("sslmode")) {
     case "disable":
       sslmode = "disable";
@@ -59,7 +59,7 @@ export function parse(text: string): OpenOpts {
       throw new Error(`Invalid url: ${url.href}`);
   }
 
-  const result: OpenOpts = {
+  const result: Opts = {
     host,
     port,
     user,

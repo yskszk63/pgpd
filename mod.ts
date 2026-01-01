@@ -4,6 +4,6 @@ export type {
   DescribeResult,
   DescribeResultParameter,
   DescribeResultRow,
-  OpenOpts,
+  Opts,
   Type,
 } from "./src/client.ts";
