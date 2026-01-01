@@ -25,7 +25,7 @@ PostgreSQL provides tools such as `EXPLAIN` and `information_schema`, but they a
 * Executes a minimal subset of the Extended Query Flow:
 
   * `Parse`
-  * `Describe` (Statement / Portal)
+  * `Describe` (Statement)
 * Collects and returns:
 
   * `ParameterDescription`
