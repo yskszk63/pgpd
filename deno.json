@@ -1,4 +1,8 @@
 {
+  "name": "@pgpd/pgpd",
+  "version": "0.1.0",
+  "license": "MIT",
+  "exports": "./mod.ts",
   "imports": {
     "pg-protocol": "npm:pg-protocol@1.10.3",
     "zod/mini": "npm:zod@4.2.1/mini",
