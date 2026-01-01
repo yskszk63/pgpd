@@ -124,14 +124,16 @@ async function writeSendSASLInitialResponseMessageScramSha256(
     throw new Error("password not specified");
   }
 
-  // TODO WHY 16, base64??
+  // NOTE: Based on node-postgres
+  // https://github.com/brianc/node-postgres/blob/ecff60dc8aa0bd1ad5ea8f4623af0756a86dc110/packages/pg/lib/crypto/sasl.js
   const b = new Uint8Array(18);
   crypto.getRandomValues(b);
   const nonce = b.toBase64();
-  state.nonce = nonce;
-
   const clientFirstBare = `n=${opts.user},r=${nonce}`;
+
+  state.nonce = nonce;
   state.clientFirstBare = clientFirstBare;
+  delete state.serverSignature;
 
   await conn.write(
     "sendSASLInitialResponseMessage",
@@ -238,6 +240,9 @@ export async function handleAuthentication(
         if (data !== `v=${state.serverSignature}`) {
           throw new Error("SCRAM-SHA-256 verification failure");
         }
+        delete state.nonce;
+        delete state.clientFirstBare;
+        delete state.serverSignature;
         break;
       }
 
