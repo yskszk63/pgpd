@@ -39,8 +39,25 @@ export type PgServer = {
   [Symbol.asyncDispose]: () => Promise<void>;
 };
 
+export type AuthMethod =
+  | "trust"
+  | "reject"
+  | "scram-sha-256"
+  | "md5"
+  | "password"
+  | "gss"
+  | "sspi"
+  | "ident"
+  | "peer"
+  | "ldap"
+  | "radius"
+  | "cert"
+  | "pam"
+  | "bsd";
+
 export type RunOpts = {
   ssl?: boolean | undefined;
+  authMethod?: AuthMethod | undefined;
 };
 
 export async function runPgServer(opts?: RunOpts): Promise<PgServer> {
@@ -77,6 +94,7 @@ exec docker-entrypoint.sh postgres -cssl=on -cssl_cert_file="$fcert" -cssl_key_f
   const user = "postgres";
   const password = "password";
 
+  const authMethod = opts?.authMethod ?? "md5";
   const containerId = await docker(
     "run",
     "--rm",
@@ -84,7 +102,8 @@ exec docker-entrypoint.sh postgres -cssl=on -cssl_cert_file="$fcert" -cssl_key_f
     `-ePOSTGRES_DB=${database}`,
     `-ePOSTGRES_USER=${user}`,
     `-ePOSTGRES_PASSWORD=${password}`,
-    "-ePOSTGRES_INITDB_ARGS=--auth-host=md5",
+    `-ePOSTGRES_INITDB_ARGS=--auth-host=${authMethod} --nosync`,
+    `-ePOSTGRES_HOST_AUTH_METHOD=${authMethod}`,
     "-ePGDATA=/var/lib/postgresql/data",
     "--network",
     "bridge",

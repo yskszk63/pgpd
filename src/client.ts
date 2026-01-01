@@ -1,14 +1,11 @@
 import * as process from "node:process";
 import * as net from "node:net";
-import { Buffer } from "node:buffer";
-import * as crypt from "node:crypto";
 import * as fs from "node:fs/promises";
 import path from "node:path";
 
 import * as z from "zod/mini";
 
 import {
-  zAuthenticationMD5Password,
   zDataRowMessage,
   zParameterDescriptionMessage,
   zRowDescriptionMessage,
@@ -18,51 +15,12 @@ import { connect, FatalError } from "./conn.ts";
 import { parse as parseUrl } from "./url.ts";
 import { checkAndFillDefault } from "./opts.ts";
 import type { CheckedOpts, Opts } from "./opts.ts";
+import { handleAuthentication } from "./auth.ts";
 
 export type { Opts };
 
 function isUds(opts: CheckedOpts): boolean {
   return opts?.host?.startsWith("/") ?? false;
-}
-
-async function writePasswordMessageMd5(
-  conn: Connection,
-  salt: Buffer,
-  opts: CheckedOpts,
-): Promise<void> {
-  if (typeof opts.password === "undefined") {
-    throw new Error("password not specified");
-  }
-
-  const hasher = crypt.createHash("md5");
-  hasher.update(opts.password).update(opts.user);
-  const h1 = hasher.digest("hex");
-
-  const hasher2 = crypt.createHash("md5");
-  const h2 = hasher2.update(h1).update(salt).digest("hex");
-
-  await conn.write("password", `md5${h2}`);
-}
-
-async function handleAuthentication(
-  conn: Connection,
-  opts: CheckedOpts,
-): Promise<void> {
-  for await (const msg of conn.readUntilReady()) {
-    switch (msg.name) {
-      case "authenticationOk":
-        return;
-
-      case "authenticationMD5Password": {
-        const { salt } = zAuthenticationMD5Password.parse(msg);
-        await writePasswordMessageMd5(conn, salt, opts);
-        break;
-      }
-
-      default:
-        throw new Error(`Not implemented ${msg.name}`);
-    }
-  }
 }
 
 export type Type = {

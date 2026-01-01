@@ -1,7 +1,7 @@
 import { runPgServer } from "./helper.ts";
 import { open } from "~/client.ts";
 
-Deno.test("auth", async () => {
+Deno.test("ssl", async () => {
   await using pg = await runPgServer({ ssl: true });
   await using _ = await open({
     host: pg.addr,

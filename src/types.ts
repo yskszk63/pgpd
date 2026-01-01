@@ -12,6 +12,33 @@ export const zAuthenticationMD5Password: z.ZodMiniType<
   salt: z.custom<Buffer>((v) => v instanceof Buffer),
 });
 
+export type AuthenticationSASL = {
+  mechanisms: string[];
+};
+
+export const zAuthenticationSASL: z.ZodMiniType<AuthenticationSASL> = z.object({
+  mechanisms: z.array(z.string()),
+});
+
+export type AuthenticationSASLContinue = {
+  data: string;
+};
+
+export const zAuthenticationSASLContinue: z.ZodMiniType<
+  AuthenticationSASLContinue
+> = z.object({
+  data: z.string(),
+});
+
+export type AuthenticationSASLFinal = {
+  data: string;
+};
+
+export const zAuthenticationSASLFinal: z.ZodMiniType<AuthenticationSASLFinal> =
+  z.object({
+    data: z.string(),
+  });
+
 export type ParameterDescriptionMessage = {
   parameterCount: number;
   dataTypeIDs: number[];
