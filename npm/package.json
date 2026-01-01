@@ -1,0 +1,15 @@
+{
+  "name": "pgpd",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "pgpd": "./bin/index.js"
+  },
+  "exports": {
+    "import": "./index.js"
+  },
+  "dependencies": {
+    "pg-protocol": "^1.10.3",
+    "zod": "^4.2.1"
+  }
+}
