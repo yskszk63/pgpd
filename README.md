@@ -83,12 +83,23 @@ ReadyForQuery
 
 ## CLI Usage
 
+### Deno
+
 ```bash
 export DATABASE_URL='postgres://postgres:password@localhost:5432/postgres?sslmode=disable'
 SQL='SELECT t.oid, n.nspname, t.typname, format_type(t.oid, NULL) AS sql_type FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace WHERE t.oid = $1 ORDER BY t.oid'
-echo $SQL | deno run --allow-env --allow-net ./cli.ts | jq
+echo $SQL | deno run --allow-env --allow-net jsr:@pgpd/pgpd/cli.ts | jq
 ```
 
+### Node.js
+
+```bash
+export DATABASE_URL='postgres://postgres:password@localhost:5432/postgres?sslmode=disable'
+SQL='SELECT t.oid, n.nspname, t.typname, format_type(t.oid, NULL) AS sql_type FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace WHERE t.oid = $1 ORDER BY t.oid'
+echo $SQL | npx pgpd | jq
+```
+
+NOTE: require Node v25+
 
 ### Example Output
 
@@ -153,8 +164,24 @@ echo $SQL | deno run --allow-env --allow-net ./cli.ts | jq
 
 ## API Usage
 
+### Install (Deno)
+
+```bash
+deno add jsr:@pgpd/pgpd
+```
+
+### Install (Node.js / npm)
+
+```bash
+npm i pgpd
+```
+
+### Example
+
 ```ts
-import { open } from "TODO/mod.ts";
+import { open } from "@pgpd/pgpd";
+// or Node.js (npm)
+// import { open } from "pgpd";
 
 await using client = await open({
   host: "localhost",
