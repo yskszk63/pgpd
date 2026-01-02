@@ -176,6 +176,12 @@ deno add jsr:@pgpd/pgpd
 npm i pgpd
 ```
 
+### Install (Node.js / jsr)
+
+```bash
+npx jsr add @pgpd/pgpd
+```
+
 ### Example
 
 ```ts ignore
