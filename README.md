@@ -217,6 +217,42 @@ const result = await client.describe("SELECT 1");
 
 ---
 
+## Runtime Compatibility / Shim Requirements
+
+This project may use newer JavaScript features that are only available in recent Node.js releases. If you run `pgpd` on older Node.js versions, you might need to install shims / polyfills.
+
+### Base64 / ArrayBuffer methods
+
+Node.js 25 and newer include built-in `Uint8Array.prototype.toBase64` / `Uint8Array.fromBase64` and related base64/hex conversion utilities.  
+On **Node.js < 25**, these methods may not exist — in such cases install and load a shim like `es-arraybuffer-base64`:
+
+```bash
+npm install es-arraybuffer-base64
+```
+
+```js
+require("es-arraybuffer-base64/auto");
+```
+
+This ensures `Uint8Array.prototype.toBase64`, `.fromBase64`, etc., are defined in older environments.
+
+### Disposable / Explicit Resource Management APIs
+
+The `DisposableStack`, `AsyncDisposableStack`, and the `Symbol.dispose` / `Symbol.asyncDispose` protocols are part of the Explicit Resource Management proposal.  
+Not all Node.js releases include these built-ins yet. On **Node.js < 24**, use a shim / polyfill such as `disposablestack`:
+
+```bash
+npm install disposablestack
+```
+
+```js
+require("disposablestack/auto");
+```
+
+If you are using a recent Node.js version, no additional shims are required.
+
+---
+
 ## Status
 
 * 🚧 Active development
