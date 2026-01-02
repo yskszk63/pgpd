@@ -1,0 +1,33 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  jsr:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v6
+    - uses: denoland/setup-deno@v2
+    - run: deno publish
+
+  npm:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v6
+    - uses: denoland/setup-deno@v2
+    - uses: actions/setup-node@v6
+      with:
+        registry-url: 'https://registry.npmjs.org'
+    - run: make npm
+    - run: npm ci
+      working-directory: npm/
+    - run: npm publish --provenance --access public
+      env:
+        NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
