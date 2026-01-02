@@ -16,7 +16,7 @@ npm/index.js:
 	$(esbuild) --bundle mod.ts --outfile=$@ --platform=node --external:pg-protocol --external:zod/mini --format=esm --target=es2023
 
 npm/bin/index.js:
-	$(esbuild) --bundle cli.ts --outfile=$@ --platform=node --external:pg-protocol --external:zod/mini --format=esm --target=es2023 --banner:js='#!/usr/bin/node'
+	$(esbuild) --bundle cli.ts --outfile=$@ --platform=node --external:pg-protocol --external:zod/mini --format=esm --target=es2023 --banner:js='#!/usr/bin/env node'
 
 npm/index.d.ts:
 	$(tsc) --declaration --emitDeclarationOnly --outDir npm/ --lib esnext ./src/api/index.ts
