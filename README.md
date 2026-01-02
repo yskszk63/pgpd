@@ -178,7 +178,7 @@ npm i pgpd
 
 ### Example
 
-```ts
+```ts ignore
 import { open } from "@pgpd/pgpd";
 // or Node.js (npm)
 // import { open } from "pgpd";
@@ -257,7 +257,7 @@ On **Node.js < 25**, these methods may not exist — in such cases install and l
 npm install es-arraybuffer-base64
 ```
 
-```js
+```js ignore
 require("es-arraybuffer-base64/auto");
 ```
 
@@ -272,7 +272,7 @@ Not all Node.js releases include these built-ins yet. On **Node.js < 24**, use a
 npm install disposablestack
 ```
 
-```js
+```js ignore
 require("disposablestack/auto");
 ```
 

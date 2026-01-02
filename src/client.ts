@@ -188,6 +188,30 @@ async function connectAuthenticate(
   }
 }
 
+/**
+ * Get client instance.
+ *
+ * @example
+ * ```ts ignore
+ * // opts from `DATABASE_URL` environment variable.
+ * await using client = await open();
+ * ...
+ *
+ * // default values from `PG***` environment variables.
+ * await using client = await open({});
+ * ...
+ *
+ * // explicitly
+ * await using client = await open({
+ *   host: "host",
+ *   port: 5432,
+ *   sslmode: "require",
+ *   user: "user",
+ *   password: "pass",
+ *   database: "mydb",
+ * });
+ * ```
+ */
 export async function open(
   opts: Opts | string | undefined = process.env["DATABASE_URL"],
 ): Promise<Client> {
