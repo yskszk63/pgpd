@@ -26,6 +26,6 @@
   },
   "exclude": [
     "npm/",
-    "integration_test/node/"
+    "integration_test/"
   ]
 }
