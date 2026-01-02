@@ -1,6 +1,6 @@
 .PHONY: nop test npm test-it-node clean
 
-npm_files := npm/index.js npm/bin/index.js npm/index.d.ts
+npm_files := npm/index.js npm/bin/index.js npm/index.d.ts npm/README.md npm/LICENSE
 version := $(shell jq -r ".version" npm/package.json)
 
 nop:
@@ -18,6 +18,9 @@ npm/index.d.ts:
 	deno x npm:typescript/tsc --declaration --emitDeclarationOnly --outDir npm/ --lib esnext ./src/api/index.ts
 
 npm/README.md: README.md
+	cp $< $@
+
+npm/LICENSE: LICENSE
 	cp $< $@
 
 npm: $(npm_files)
