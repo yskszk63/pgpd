@@ -1,7 +1,7 @@
 .PHONY: nop test npm test-it-node clean
 
 npm_files := npm/index.js npm/bin/index.js npm/index.d.ts
-version = 0.1.2
+version := $(shell jq -r ".version" npm/package.json)
 
 nop:
 
@@ -17,6 +17,9 @@ npm/bin/index.js:
 npm/index.d.ts:
 	deno x npm:typescript/tsc --declaration --emitDeclarationOnly --outDir npm/ --lib esnext ./src/api/index.ts
 
+npm/README.md: README.md
+	cp $< $@
+
 npm: $(npm_files)
 
 npm/pgpd-$(version).tgz: npm
@@ -26,4 +29,4 @@ test-it-node: npm/pgpd-$(version).tgz
 	$(MAKE) -C integration_test/node/ test DATABASE_URL='postgres://postgres:password@localhost:5432/postgres?sslmode=disable'
 
 clean:
-	$(RM) $(npm_files)
+	$(RM) -rf $(npm_files) npm/pgpd-*.tgz npm/node_modules/
