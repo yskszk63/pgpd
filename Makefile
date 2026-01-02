@@ -1,4 +1,4 @@
-.PHONY: nop test npm test-it-node clean
+.PHONY: nop test npm test-it-node test-it-bun clean
 
 npm_files := npm/index.js npm/bin/index.js npm/index.d.ts npm/README.md npm/LICENSE
 version := $(shell jq -r ".version" npm/package.json)
@@ -33,7 +33,11 @@ npm/pgpd-$(version).tgz: npm
 	(cd npm && npm pack)
 
 test-it-node: npm/pgpd-$(version).tgz
-	$(MAKE) -C integration_test/node/ test DATABASE_URL='postgres://postgres:password@localhost:5432/postgres?sslmode=disable'
+	$(MAKE) -C integration_test/ clean test-node DATABASE_URL='postgres://postgres:password@localhost:5432/postgres?sslmode=disable' TARHREF=$(realpath npm/pgpd-$(version).tgz)
+
+test-it-bun: npm/pgpd-$(version).tgz
+	$(MAKE) -C integration_test/ clean test-bun DATABASE_URL='postgres://postgres:password@localhost:5432/postgres?sslmode=disable' TARHREF=$(realpath npm/pgpd-$(version).tgz)
 
 clean:
 	$(RM) -rf $(npm_files) npm/pgpd-*.tgz npm/node_modules/
+	$(MAKE) -C integration_test/ clean

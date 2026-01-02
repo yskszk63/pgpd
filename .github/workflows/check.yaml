@@ -56,3 +56,15 @@ jobs:
     - run: docker run -d --rm -ePOSTGRES_PASSWORD=password -p5432:5432 postgres
     - run: make test-it-node
     - run: docker ps -q|xargs docker stop
+
+  it-bun:
+    needs:
+      - check
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v6
+    - uses: denoland/setup-deno@v2
+    - uses: oven-sh/setup-bun@v2
+    - run: docker run -d --rm -ePOSTGRES_PASSWORD=password -p5432:5432 postgres
+    - run: make test-it-bun
+    - run: docker ps -q|xargs docker stop
