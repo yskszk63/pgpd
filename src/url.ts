@@ -1,4 +1,4 @@
-import type { Opts } from "./opts.ts";
+import type { Opts } from "./api.ts";
 
 export function parse(text: string): Opts {
   const url = new URL(text);

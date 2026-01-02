@@ -14,21 +14,15 @@ import type { Connection } from "./conn.ts";
 import { connect, FatalError } from "./conn.ts";
 import { parse as parseUrl } from "./url.ts";
 import { checkAndFillDefault } from "./opts.ts";
-import type { CheckedOpts, Opts } from "./opts.ts";
+import type { CheckedOpts } from "./opts.ts";
 import { handleAuthentication } from "./auth.ts";
-
-export type { Opts };
-
-function isUds(opts: CheckedOpts): boolean {
-  return opts?.host?.startsWith("/") ?? false;
-}
-
-export type Type = {
-  oid: number;
-  schema: string;
-  name: string;
-  sqlType: string;
-};
+import type {
+  Client,
+  DescribeResult,
+  open as opendecl,
+  Opts,
+  Type,
+} from "./api.ts";
 
 const zSelectTypeRow = z.tuple([
   z.string(),
@@ -70,21 +64,6 @@ async function selectTypes(
 
   return types;
 }
-
-export type DescribeResultParameter = {
-  type: Type | Pick<Type, "oid">;
-};
-
-export type DescribeResultRow = {
-  name: string;
-  type: Type | Pick<Type, "oid">;
-  format: "text" | "binary";
-};
-
-export type DescribeResult = {
-  parameters: DescribeResultParameter[];
-  rows?: DescribeResultRow[] | undefined;
-};
 
 async function describe(
   conn: Connection,
@@ -161,7 +140,7 @@ async function connectUds(opts: CheckedOpts): Promise<net.Socket> {
 }
 
 async function connectSocket(opts: CheckedOpts): Promise<net.Socket> {
-  if (isUds(opts)) {
+  if (opts._connection === "uds") {
     return await connectUds(opts);
   }
   return await connectTcp(opts);
@@ -209,11 +188,6 @@ async function connectAuthenticate(
   }
 }
 
-export type Client = {
-  describe: (text: string) => Promise<DescribeResult>;
-  [Symbol.asyncDispose]: () => Promise<void>;
-};
-
 export async function open(
   opts: Opts | string | undefined = process.env["DATABASE_URL"],
 ): Promise<Client> {
@@ -256,3 +230,5 @@ export async function open(
     },
   };
 }
+
+open satisfies typeof opendecl;

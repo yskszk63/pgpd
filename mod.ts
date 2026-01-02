@@ -6,4 +6,4 @@ export type {
   DescribeResultRow,
   Opts,
   Type,
-} from "./src/client.ts";
+} from "./src/api.ts";

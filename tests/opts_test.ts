@@ -1,6 +1,7 @@
 import { assertEquals } from "@std/assert";
 import { checkAndFillDefault } from "~/opts.ts";
-import type { CheckedOpts, Opts } from "~/opts.ts";
+import type { CheckedOpts } from "~/opts.ts";
+import type { Opts } from "~/api.ts";
 
 type Test = {
   input: Opts;

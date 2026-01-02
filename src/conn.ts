@@ -3,7 +3,8 @@ import type * as stream from "node:stream";
 
 import * as proto from "pg-protocol";
 
-import type { CheckedOpts, SslMode } from "./opts.ts";
+import type { CheckedOpts } from "./opts.ts";
+import type { SslMode } from "./api.ts";
 
 async function wraptls(
   mode: Exclude<SslMode, "disable">,

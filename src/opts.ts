@@ -1,19 +1,6 @@
 import process from "node:process";
 
-export type SslMode =
-  | "disable"
-  | "require"
-  | "verify-ca"
-  | "verify-full";
-
-export type Opts = {
-  host?: string | undefined;
-  port?: number | undefined;
-  sslmode?: SslMode | undefined;
-  user?: string | undefined;
-  password?: string | undefined;
-  database?: string | undefined;
-};
+import type { Opts, SslMode } from "./api.ts";
 
 export type CheckedOpts = {
   readonly _connection: "tcp" | "uds";
