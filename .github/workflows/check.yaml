@@ -17,6 +17,25 @@ jobs:
     - run: deno lint
     - run: make test
 
+  check-pg-ver:
+    needs:
+      - check
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        pg-ver:
+          - 18
+          - 17
+          - 16
+          - 15
+          - 14
+    steps:
+    - uses: actions/checkout@v6
+    - uses: denoland/setup-deno@v2
+    - run: make test
+      env:
+        POSTGRESQL_VER: ${{ matrix.pg-ver }}
+
   it-node:
     needs:
       - check

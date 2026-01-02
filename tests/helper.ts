@@ -1,4 +1,5 @@
 import path from "node:path";
+import process from "node:process";
 import { setTimeout } from "node:timers/promises";
 
 import * as z from "zod/mini";
@@ -58,6 +59,7 @@ export type AuthMethod =
 export type RunOpts = {
   ssl?: boolean | undefined;
   authMethod?: AuthMethod | undefined;
+  postgresqlVer?: string | undefined;
 };
 
 export async function runPgServer(opts?: RunOpts): Promise<PgServer> {
@@ -94,6 +96,9 @@ exec docker-entrypoint.sh postgres -cssl=on -cssl_cert_file="$fcert" -cssl_key_f
   const user = "postgres";
   const password = "password";
 
+  const pgver = opts?.postgresqlVer ?? process.env["POSTGRESQL_VER"] ??
+    "latest";
+
   const authMethod = opts?.authMethod ?? "md5";
   const containerId = await docker(
     "run",
@@ -113,7 +118,7 @@ exec docker-entrypoint.sh postgres -cssl=on -cssl_cert_file="$fcert" -cssl_key_f
     `type=tmpfs,target=/var/lib/postgresql/data`,
     "--mount",
     `type=bind,source=${sockdir},target=/var/run/postgresql`,
-    "postgres",
+    `postgres:${pgver}`,
     "bash",
     "-c",
     script,
