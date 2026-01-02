@@ -1,6 +1,6 @@
 {
   "name": "pgpd",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "bin": {
     "pgpd": "./bin/index.js"
