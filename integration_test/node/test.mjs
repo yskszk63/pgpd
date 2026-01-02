@@ -3,8 +3,14 @@ import { open } from "pgpd";
 
 const sql = `SELECT t.oid, n.nspname, t.typname, format_type(t.oid, NULL) AS sql_type FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace WHERE t.oid = $1 ORDER BY t.oid`;
 
-await using client = await open();
-const result = await client.describe(sql);
+let result;
+const client = await open();
+try {
+  result = await client.describe(sql);
+} finally {
+  await client[Symbol.asyncDispose]();
+}
+
 assert.deepEqual(result, {
   parameters: [
     {
