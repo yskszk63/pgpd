@@ -1,7 +1,7 @@
 .PHONY: nop test npm test-it-node clean
 
 npm_files := npm/index.js npm/bin/index.js npm/index.d.ts
-version = 0.1.1
+version = 0.1.2
 
 nop:
 
