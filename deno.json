@@ -11,5 +11,9 @@
   },
   "fmt": {
     "include": ["**/*.ts"]
-  }
+  },
+  "exclude": [
+    "npm/",
+    "integration_test/npm/"
+  ]
 }

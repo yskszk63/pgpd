@@ -6,7 +6,7 @@
     "pgpd": "./bin/index.js"
   },
   "exports": {
-    "import": "./index.js"
+    ".": "./index.js"
   },
   "dependencies": {
     "pg-protocol": "^1.10.3",
