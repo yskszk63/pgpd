@@ -12,6 +12,15 @@
   "fmt": {
     "include": ["**/*.ts"]
   },
+  "publish": {
+    "include": [
+      "cli.ts",
+      "mod.ts",
+      "src/",
+      "README.md",
+      "LICENSE"
+    ]
+  },
   "exclude": [
     "npm/",
     "integration_test/node/"
