@@ -16,3 +16,24 @@ jobs:
     - run: deno check
     - run: deno lint
     - run: make test
+
+  it-node:
+    needs:
+      - check
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version:
+          - 20
+          - 22
+          - 24
+          - latest
+    steps:
+    - uses: actions/checkout@v6
+    - uses: denoland/setup-deno@v2
+    - uses: actions/setup-node@v6
+      with:
+        node-version: ${{ matrix.node-version }}
+    - run: docker run -d --rm -ePOSTGRES_PASSWORD=password -p5432:5432 postgres
+    - run: make test-it-node
+    - run: docker ps -q|xargs docker stop
