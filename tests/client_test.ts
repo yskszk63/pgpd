@@ -88,6 +88,20 @@ Deno.test("test", async () => {
       },
     ],
   });
+
+  for (const param of result.parameters) {
+    // check typing
+    if (typeof param.type.name === "undefined") {
+      continue;
+    }
+  }
+
+  for (const row of result.rows ?? []) {
+    // check typing
+    if (typeof row.type.name === "undefined") {
+      continue;
+    }
+  }
 });
 
 Deno.test("testError", async () => {

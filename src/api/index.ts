@@ -19,7 +19,7 @@ export type DescribeResultParameter = {
   /**
    * Parameter type.
    */
-  type: Type | Pick<Type, "oid">;
+  type: Type | Pick<Type, "oid"> & Partial<Type>;
 };
 
 /**
@@ -29,7 +29,7 @@ export type DescribeResultRow = {
   /** Column name. */
   name: string;
   /** Column type. */
-  type: Type | Pick<Type, "oid">;
+  type: Type | Pick<Type, "oid"> & Partial<Type>;
   /** Column format. */
   format: "text" | "binary";
 };
