@@ -1,4 +1,3 @@
-import * as process from "node:process";
 import * as net from "node:net";
 import * as fs from "node:fs/promises";
 import path from "node:path";
@@ -12,7 +11,6 @@ import {
 } from "./types.ts";
 import type { Connection } from "./conn.ts";
 import { connect, FatalError } from "./conn.ts";
-import { parse as parseUrl } from "./url.ts";
 import { checkAndFillDefault } from "./opts.ts";
 import type { CheckedOpts } from "./opts.ts";
 import { handleAuthentication } from "./auth.ts";
@@ -218,14 +216,12 @@ async function connectAuthenticate(
  * ```
  */
 export async function open(
-  opts: Opts | string | undefined = process.env["DATABASE_URL"],
+  opts: Opts | string | undefined,
 ): Promise<Client> {
-  if (typeof opts === "undefined") {
-    throw new Error(`no DATABASE_URL`);
-  }
-
   if (typeof opts === "string") {
-    opts = parseUrl(opts);
+    opts = {
+      connectionString: opts,
+    };
   }
 
   const checked = checkAndFillDefault(opts);

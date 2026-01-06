@@ -80,6 +80,11 @@ export type SslMode =
  */
 export type Opts = {
   /**
+   * e.g) postgres://user:pass@example.com:5432/postgres
+   */
+  connectionString?: string | undefined;
+
+  /**
    * Target host (tcp).
    * Or startswith '/' is Unix Socket Domain.
    */

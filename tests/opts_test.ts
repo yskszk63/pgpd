@@ -4,7 +4,7 @@ import type { CheckedOpts } from "~/opts.ts";
 import type { Opts } from "~/api.ts";
 
 type Test = {
-  input: Opts;
+  input: Opts | undefined;
   env: NodeJS.ProcessEnv;
   wants: CheckedOpts;
 };
@@ -60,6 +60,37 @@ const tests: Test[] = [
       password: void 0,
       database: void 0,
       sslmode: "disable",
+    },
+  },
+  {
+    input: void 0,
+    env: {
+      DATABASE_URL: "postgres://user:pass@example.com:5432/postgres",
+    },
+    wants: {
+      _connection: "tcp",
+      host: "example.com",
+      port: 5432,
+      user: "user",
+      password: "pass",
+      database: "postgres",
+      sslmode: "verify-full",
+    },
+  },
+  {
+    input: {
+      connectionString: "postgres://user:pass@example.com:5432/postgres",
+      sslmode: "require",
+    },
+    env: {},
+    wants: {
+      _connection: "tcp",
+      host: "example.com",
+      port: 5432,
+      user: "user",
+      password: "pass",
+      database: "postgres",
+      sslmode: "require",
     },
   },
 ];
