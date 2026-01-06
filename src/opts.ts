@@ -1,6 +1,7 @@
 import process from "node:process";
 
 import type { Opts, SslMode } from "./api.ts";
+import { parse as parseUrl } from "./url.ts";
 
 export type CheckedOpts = {
   readonly _connection: "tcp" | "uds";
@@ -12,10 +13,29 @@ export type CheckedOpts = {
   readonly database?: string | undefined;
 };
 
+function expandConnectionString(opts: Opts): Opts {
+  if (typeof opts.connectionString === "undefined") {
+    return opts;
+  }
+
+  const parsed = parseUrl(opts.connectionString);
+  return {
+    ...parsed,
+    ...opts,
+  };
+}
+
 export function checkAndFillDefault(
-  opts: Opts,
+  opts: Opts | undefined,
   env = process.env,
 ): CheckedOpts {
+  if (typeof opts === "undefined") {
+    opts = {
+      connectionString: env["DATABASE_URL"],
+    };
+  }
+  opts = expandConnectionString(opts);
+
   const host = opts.host ?? env["PGHOST"];
   let port = opts.port;
   if (typeof port === "undefined" && typeof env["PGPORT"] !== "undefined") {
