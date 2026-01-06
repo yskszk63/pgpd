@@ -156,9 +156,14 @@ async function tryConnectAuthenticate(
 
   const conn = await connect(sock, opts);
 
-  await conn.write("startup", {
+  const startupOpts: Record<string, string> = {
     user: opts.user,
-  });
+  };
+  if (typeof opts.database !== "undefined") {
+    startupOpts.database = opts.database;
+  }
+
+  await conn.write("startup", startupOpts);
 
   await handleAuthentication(conn, opts);
 

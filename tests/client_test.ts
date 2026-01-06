@@ -6,7 +6,7 @@ import { open } from "~/client.ts";
 let srv: PgServer;
 
 Deno.test.beforeAll(async () => {
-  srv = await runPgServer();
+  srv = await runPgServer({ user: "user" });
 });
 
 Deno.test.afterAll(async () => {

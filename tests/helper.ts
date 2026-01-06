@@ -60,6 +60,8 @@ export type RunOpts = {
   ssl?: boolean | undefined;
   authMethod?: AuthMethod | undefined;
   postgresqlVer?: string | undefined;
+  user?: string | undefined;
+  database?: string | undefined;
 };
 
 export async function runPgServer(opts?: RunOpts): Promise<PgServer> {
@@ -92,8 +94,8 @@ exec docker-entrypoint.sh postgres -cssl=on -cssl_cert_file="$fcert" -cssl_key_f
   }
   // $PGDATA/postgresql.conf
 
-  const database = "postgres";
-  const user = "postgres";
+  const database = opts?.database ?? "postgres";
+  const user = opts?.user ?? "postgres";
   const password = "password";
 
   const pgver = opts?.postgresqlVer ?? process.env["POSTGRESQL_VER"] ??
