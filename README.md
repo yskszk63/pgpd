@@ -68,11 +68,11 @@ ReadyForQuery
   │
   │  Parse
   │  Describe (Statement)
+  │  Sync
   ▼
 ParameterDescription
 RowDescription
   │
-  │  Sync
   ▼
 ReadyForQuery
 ```
