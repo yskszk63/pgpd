@@ -1,16 +1,23 @@
 import * as tls from "node:tls";
 import type * as stream from "node:stream";
-
-import * as proto from "pg-protocol";
+import { Readable as NodeReadable } from "node:stream";
 
 import type { CheckedOpts } from "./opts.ts";
 import type { SslMode } from "./api.ts";
+import type {
+  BackendMessage,
+  ErrorResponse,
+  FrontendMessage,
+} from "./proto/msg.ts";
+import { serialize } from "./proto/ser.ts";
+import { DeserializeStream } from "./proto/stream.ts";
 
 async function wraptls(
   mode: Exclude<SslMode, "disable">,
   raw: stream.Duplex,
 ): Promise<stream.Duplex> {
-  raw.write(proto.serialize.requestSsl());
+  raw.write(serialize({ type: "SSLRequest" }));
+
   await new Promise<void>((resolve, reject) => {
     raw.once("data", (buf) => {
       if (buf[0] !== 0x53) {
@@ -37,31 +44,14 @@ async function wraptls(
   return tls.connect(opts);
 }
 
-type BackendMessage = Parameters<Parameters<typeof proto.parse>[1]>[0];
-class ProtoStream extends ReadableStream<BackendMessage> {
-  constructor(conn: stream.Readable) {
-    super({
-      start: (controller) => {
-        proto.parse(conn, (msg) => {
-          controller.enqueue(msg);
-        });
-      },
-    });
-  }
-}
-
-type Names = keyof typeof proto.serialize;
-type SerializeOpts<K extends Names> = {
-  [P in Names]: Parameters<(typeof proto.serialize)[P]>;
-}[K];
 export type Connection = {
   readUntilReady: () => AsyncIterable<
-    Exclude<BackendMessage, { name: "readyForQuery" } | { name: "error" }>
+    Exclude<
+      BackendMessage,
+      { type: "ReadyForQuery" } | { type: "ErrorResponse" }
+    >
   >;
-  write: <
-    K extends Names,
-    P extends SerializeOpts<K>,
-  >(name: K, ...opts: P) => Promise<void>;
+  write: (msg: FrontendMessage) => Promise<void>;
 };
 
 export class FatalError extends Error {}
@@ -77,7 +67,8 @@ export async function connect(
 ): Promise<Connection> {
   const sslmode = opts.sslmode ?? "verify-full";
   const conn = sslmode !== "disable" ? await wraptls(sslmode, raw) : raw;
-  const stream = new ProtoStream(conn);
+  const stream = (NodeReadable.toWeb(conn) as ReadableStream<Uint8Array>)
+    .pipeThrough(new DeserializeStream());
   const reader = stream.getReader();
 
   let state: State = "READY";
@@ -92,7 +83,7 @@ export async function connect(
     readUntilReady: async function* () {
       throwIfBroken();
 
-      let err: unknown;
+      let err: ErrorResponse | undefined;
       loop:
       while (state !== "READY") {
         const { done, value } = await reader.read();
@@ -101,9 +92,9 @@ export async function connect(
           throw new Error();
         }
 
-        const name = value.name;
-        switch (name) {
-          case "readyForQuery":
+        const type = value.type;
+        switch (type) {
+          case "ReadyForQuery":
             switch (state) {
               case "WAIT_READY":
                 break;
@@ -113,7 +104,7 @@ export async function connect(
             state = "READY";
             break loop;
 
-          case "error":
+          case "ErrorResponse":
             switch (state) {
               case "WAIT_READY":
               case "BUSY":
@@ -127,52 +118,56 @@ export async function connect(
             err = value;
             break loop;
 
-          case "parseComplete":
-          case "bindComplete":
-          case "closeComplete":
-          case "noData":
-          case "portalSuspended":
-          case "replicationStart":
-          case "emptyQuery":
-          case "copyDone":
-          case "copyData":
-          case "rowDescription":
-          case "parameterDescription":
-          case "parameterStatus":
-          case "backendKeyData":
-          case "notification":
-          case "commandComplete":
-          case "dataRow":
-          case "copyInResponse":
-          case "copyOutResponse":
-          case "authenticationOk":
-          case "authenticationMD5Password":
-          case "authenticationCleartextPassword":
-          case "authenticationSASL":
-          case "authenticationSASLContinue":
-          case "authenticationSASLFinal":
-          case "notice":
+          case "ParseComplete":
+          case "BindComplete":
+          case "CloseComplete":
+          case "NoData":
+          case "PortalSuspended":
+          // case "replicationStart":
+          case "EmptyQueryResponse":
+          case "CopyDone":
+          case "CopyData":
+          case "RowDescription":
+          case "ParameterDescription":
+          case "ParameterStatus":
+          case "BackendKeyData":
+          case "NotificationResponse":
+          case "CommandComplete":
+          case "DataRow":
+          case "CopyInResponse":
+          case "CopyOutResponse":
+          case "AuthenticationOk":
+          case "AuthenticationMD5Password":
+          case "AuthenticationCleartextPassword":
+          case "AuthenticationSASL":
+          case "AuthenticationSASLContinue":
+          case "AuthenticationSASLFinal":
+          case "NoticeResponse":
+          case "AuthenticationKerberosV5":
+          case "AuthenticationGSS":
+          case "AuthenticationSSPI":
+          case "AuthenticationGSSContinue":
+          case "CopyBothResponse":
+          case "FunctionCallResponse":
+          case "NegotiateProtocolVersion":
             yield value;
             break;
 
           default:
-            throw new Error(`Unreachable ${name satisfies never}`);
+            throw new Error(`Unreachable ${type satisfies never}`);
         }
       }
 
       if (typeof err !== "undefined") {
-        if (err instanceof proto.DatabaseError) {
-          switch (err.severity) {
-            case "FATAL":
-            case "PANIC":
-              broken = true;
-              throw new FatalError(err.message, { cause: err });
-            default:
-              break;
-          }
-        } else {
-          broken = true;
-          throw err;
+        switch (err.fields.find(([tag]) => tag === "S")?.[1]) {
+          case "FATAL":
+          case "PANIC":
+            broken = true;
+            throw new FatalError(err.fields.find(([tag]) => tag === "M")?.[1], {
+              cause: err,
+            });
+          default:
+            break;
         }
 
         // Recovery
@@ -183,20 +178,21 @@ export async function connect(
             throw new Error("DONE");
           }
           value = r.value;
-        } while (value.name !== "readyForQuery");
+        } while (value.type !== "ReadyForQuery");
         state = "READY";
         throw err;
       }
     },
 
-    write: async (name, ...opts) => {
+    write: async (msg) => {
       throwIfBroken();
 
       // @ts-ignore: supress `A spread argument must either have a tuple type or be passed to a rest parameter.`
-      const buf = proto.serialize[name](...opts);
+      const buf = serialize(msg);
 
-      switch (name) {
-        case "startup":
+      const type = msg.type;
+      switch (type) {
+        case "StartupMessage":
           switch (state) {
             case "READY":
               break;
@@ -207,10 +203,10 @@ export async function connect(
           break;
 
         // SIMPLE QUERY
-        case "query":
-        case "copyData":
-        case "copyDone":
-        case "copyFail":
+        case "Query":
+        case "CopyData":
+        case "CopyDone":
+        case "CopyFail":
           switch (state) {
             case "READY":
               break;
@@ -221,10 +217,10 @@ export async function connect(
           break;
 
         // EXTENDED QUERY
-        case "parse":
-        case "describe":
-        case "bind":
-        case "execute":
+        case "Parse":
+        case "Describe":
+        case "Bind":
+        case "Execute":
           switch (state) {
             case "BUSY":
             case "READY":
@@ -235,7 +231,7 @@ export async function connect(
           state = "BUSY";
           break;
 
-        case "sync":
+        case "Sync":
           switch (state) {
             case "READY":
             case "BUSY":
@@ -246,18 +242,21 @@ export async function connect(
           state = "WAIT_READY";
           break;
 
-        case "end":
-        case "password":
-        case "close":
-        case "flush":
-        case "cancel":
-        case "requestSsl":
-        case "sendSCRAMClientFinalMessage":
-        case "sendSASLInitialResponseMessage":
+        case "Terminate":
+        case "PasswordMessage":
+        case "Close":
+        case "Flush":
+        case "CancelRequest":
+        case "SSLRequest":
+        case "SASLResponse":
+        case "SASLInitialResponse":
+        case "GSSResponse":
+        case "GSSENCRequest":
+        case "FunctionCall": // TODO
           break;
 
         default:
-          throw new Error(`Unreachable ${name satisfies never}`);
+          throw new Error(`Unreachable ${type satisfies never}`);
       }
 
       if (!conn.write(buf)) {

@@ -53,7 +53,7 @@ class Reader {
       this.#checkSufficient(n);
     }
 
-    const len = n ?? this.#view.byteLength - this.#pos;
+    const len = n ?? this.len - this.#pos;
     const p = this.#pos;
     this.#pos += len;
     return this.#buf.slice(p, p + len);

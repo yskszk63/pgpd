@@ -2,13 +2,6 @@ import * as net from "node:net";
 import * as fs from "node:fs/promises";
 import path from "node:path";
 
-import * as z from "zod/mini";
-
-import {
-  zDataRowMessage,
-  zParameterDescriptionMessage,
-  zRowDescriptionMessage,
-} from "./types.ts";
 import type { Connection } from "./conn.ts";
 import { connect, FatalError } from "./conn.ts";
 import { checkAndFillDefault } from "./opts.ts";
@@ -22,41 +15,48 @@ import type {
   Type,
 } from "./api.ts";
 
-const zSelectTypeRow = z.tuple([
-  z.string(),
-  z.string(),
-  z.string(),
-  z.string(),
-]);
+function assertSelectTypeRow(
+  val: (Uint8Array | null)[],
+): asserts val is [Uint8Array, Uint8Array, Uint8Array, Uint8Array] {
+  if (val.length !== 4) {
+    throw new Error(`Unexpected values length`);
+  }
+  if (val.some((v) => v === null)) {
+    throw new Error(`Unexpected null`);
+  }
+}
 
 async function selectTypes(
   conn: Connection,
 ): Promise<Type[]> {
   const sql =
     "SELECT t.oid, n.nspname, t.typname, format_type(t.oid, NULL) AS sql_type FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace ORDER BY t.oid";
-  await conn.write("query", sql);
+  await conn.write({
+    type: "Query",
+    text: sql,
+  });
 
   const types: Type[] = [];
   for await (const msg of conn.readUntilReady()) {
-    switch (msg.name) {
-      case "rowDescription":
-      case "commandComplete":
+    switch (msg.type) {
+      case "RowDescription":
+      case "CommandComplete":
         break;
 
-      case "dataRow": {
-        const item = zDataRowMessage.parse(msg);
-        const [oid, schema, name, sqlType] = zSelectTypeRow.parse(item.fields);
+      case "DataRow": {
+        assertSelectTypeRow(msg.values);
+        const [oid, schema, name, sqlType] = msg.values;
         types.push({
-          oid: Number.parseInt(oid, 10),
-          schema,
-          name,
-          sqlType,
+          oid: Number.parseInt(new TextDecoder().decode(oid), 10),
+          schema: new TextDecoder().decode(schema),
+          name: new TextDecoder().decode(name),
+          sqlType: new TextDecoder().decode(sqlType),
         });
         break;
       }
 
       default:
-        throw new Error(`Not implemented ${msg.name}`);
+        throw new Error(`Not implemented ${msg.type}`);
     }
   }
 
@@ -68,41 +68,43 @@ async function describe(
   types: Record<number, Type>,
   text: string,
 ): Promise<DescribeResult> {
-  await conn.write("parse", {
+  await conn.write({
+    type: "Parse",
     text,
   });
-  await conn.write("describe", {
-    type: "S",
+  await conn.write({
+    type: "Describe",
+    describeType: "S",
   });
-  await conn.write("sync");
+  await conn.write({
+    type: "Sync",
+  });
 
   const result: DescribeResult = { parameters: [] };
   for await (const msg of conn.readUntilReady()) {
-    switch (msg.name) {
-      case "parseComplete":
-      case "noData":
+    switch (msg.type) {
+      case "ParseComplete":
+      case "NoData":
         break;
 
-      case "parameterDescription": {
-        const item = zParameterDescriptionMessage.parse(msg);
-        result.parameters = item.dataTypeIDs.map((v) => ({
+      case "ParameterDescription": {
+        result.parameters = msg.types.map((v) => ({
           type: types[v] ?? { oid: v },
         }));
         break;
       }
 
-      case "rowDescription": {
-        const item = zRowDescriptionMessage.parse(msg);
-        result.rows = item.fields.map((v) => ({
+      case "RowDescription": {
+        result.rows = msg.fields.map((v) => ({
           name: v.name,
-          type: types[v.dataTypeID] ?? { oid: v.dataTypeID },
+          type: types[v.oid] ?? { oid: v.oid },
           format: v.format,
         }));
         break;
       }
 
       default:
-        throw new Error(`Not implemented ${msg.name}`);
+        throw new Error(`Not implemented ${msg.type}`);
     }
   }
 
@@ -161,7 +163,10 @@ async function tryConnectAuthenticate(
     startupOpts.database = opts.database;
   }
 
-  await conn.write("startup", startupOpts);
+  await conn.write({
+    type: "StartupMessage",
+    opts: startupOpts,
+  });
 
   await handleAuthentication(conn, opts);
 
@@ -230,16 +235,20 @@ export async function open(
 
   const [sock, conn] = await connectAuthenticate(checked);
   stack.defer(() => new Promise((resolve) => sock.end(resolve)));
-  stack.defer(() => conn.write("end"));
+  stack.defer(() =>
+    conn.write({
+      type: "Terminate",
+    })
+  );
 
   for await (const msg of conn.readUntilReady()) {
-    switch (msg.name) {
-      case "parameterStatus":
-      case "backendKeyData":
+    switch (msg.type) {
+      case "ParameterStatus":
+      case "BackendKeyData":
         break;
 
       default:
-        throw new Error(`Not implemented ${msg.name}`);
+        throw new Error(`Not implemented ${msg.type}`);
     }
   }
 
