@@ -1,9 +1,5 @@
 import type * as m from "./msg.ts";
 
-function notImplemented(msg: m.FrontendMessage): never {
-  throw new Error(`Not implemented: ${msg.type}`);
-}
-
 type Tag = null | "D" | "P" | "p" | "Q" | "S" | "X";
 
 class Builder {
@@ -161,25 +157,25 @@ function serializeTerminate(_msg: m.Terminate): Uint8Array {
   return b.build();
 }
 
-export function serialize(msg: m.FrontendMessage): Uint8Array {
-  switch (msg.type) {
-    case "Bind":
-    case "CancelRequest":
-    case "Close":
-    case "CopyData":
-    case "CopyDone":
-    case "CopyFail":
-      return notImplemented(msg);
+type NotImplementedType =
+  | "Bind"
+  | "CancelRequest"
+  | "Close"
+  | "CopyData"
+  | "CopyDone"
+  | "CopyFail"
+  | "Execute"
+  | "Flush"
+  | "FunctionCall"
+  | "GSSENCRequest"
+  | "GSSResponse";
 
+export function serialize(
+  msg: Exclude<m.FrontendMessage, { type: NotImplementedType }>,
+): Uint8Array {
+  switch (msg.type) {
     case "Describe":
       return serializeDescribe(msg);
-
-    case "Execute":
-    case "Flush":
-    case "FunctionCall":
-    case "GSSENCRequest":
-    case "GSSResponse":
-      return notImplemented(msg);
 
     case "Parse":
       return serializeParse(msg);
