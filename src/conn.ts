@@ -4,11 +4,7 @@ import { Readable as NodeReadable } from "node:stream";
 
 import type { CheckedOpts } from "./opts.ts";
 import type { SslMode } from "./api.ts";
-import type {
-  BackendMessage,
-  ErrorResponse,
-  FrontendMessage,
-} from "./proto/msg.ts";
+import type { BackendMessage, ErrorResponse } from "./proto/msg.ts";
 import { serialize } from "./proto/ser.ts";
 import { DeserializeStream } from "./proto/stream.ts";
 
@@ -51,7 +47,7 @@ export type Connection = {
       { type: "ReadyForQuery" } | { type: "ErrorResponse" }
     >
   >;
-  write: (msg: FrontendMessage) => Promise<void>;
+  write: (...args: Parameters<typeof serialize>) => Promise<void>;
 };
 
 export class FatalError extends Error {}
@@ -204,9 +200,6 @@ export async function connect(
 
         // SIMPLE QUERY
         case "Query":
-        case "CopyData":
-        case "CopyDone":
-        case "CopyFail":
           switch (state) {
             case "READY":
               break;
@@ -219,8 +212,6 @@ export async function connect(
         // EXTENDED QUERY
         case "Parse":
         case "Describe":
-        case "Bind":
-        case "Execute":
           switch (state) {
             case "BUSY":
             case "READY":
@@ -244,15 +235,9 @@ export async function connect(
 
         case "Terminate":
         case "PasswordMessage":
-        case "Close":
-        case "Flush":
-        case "CancelRequest":
         case "SSLRequest":
         case "SASLResponse":
         case "SASLInitialResponse":
-        case "GSSResponse":
-        case "GSSENCRequest":
-        case "FunctionCall": // TODO
           break;
 
         default:
