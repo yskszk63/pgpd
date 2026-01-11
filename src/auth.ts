@@ -1,12 +1,6 @@
 import * as crypt from "node:crypto";
 import { Buffer } from "node:buffer";
 
-import {
-  zAuthenticationMD5Password,
-  zAuthenticationSASL,
-  zAuthenticationSASLContinue,
-  zAuthenticationSASLFinal,
-} from "./types.ts";
 import type { Connection } from "./conn.ts";
 import type { CheckedOpts } from "./opts.ts";
 
@@ -87,7 +81,7 @@ function xor(
 
 async function writePasswordMessageMd5(
   conn: Connection,
-  salt: Buffer,
+  salt: Uint8Array,
   opts: CheckedOpts,
 ): Promise<void> {
   if (typeof opts.password === "undefined") {
@@ -101,7 +95,10 @@ async function writePasswordMessageMd5(
   const hasher2 = crypt.createHash("md5");
   const h2 = hasher2.update(h1).update(salt).digest("hex");
 
-  await conn.write("password", `md5${h2}`);
+  await conn.write({
+    type: "PasswordMessage",
+    password: `md5${h2}`,
+  });
 }
 
 async function writePasswordPlain(
@@ -112,7 +109,10 @@ async function writePasswordPlain(
     throw new Error("password not specified");
   }
 
-  await conn.write("password", opts.password);
+  await conn.write({
+    type: "PasswordMessage",
+    password: opts.password,
+  });
 }
 
 async function writeSendSASLInitialResponseMessageScramSha256(
@@ -135,11 +135,11 @@ async function writeSendSASLInitialResponseMessageScramSha256(
   state.clientFirstBare = clientFirstBare;
   delete state.serverSignature;
 
-  await conn.write(
-    "sendSASLInitialResponseMessage",
-    "SCRAM-SHA-256",
-    `n,,${clientFirstBare}`,
-  );
+  await conn.write({
+    type: "SASLInitialResponse",
+    mechanism: "SCRAM-SHA-256",
+    data: new TextEncoder().encode(`n,,${clientFirstBare}`),
+  });
 }
 
 async function writeSendSCRAMClientFinalMessage(
@@ -190,10 +190,12 @@ async function writeSendSCRAMClientFinalMessage(
   const serverSignature = await hmac(serverKey, authMessage);
   state.serverSignature = serverSignature.toBase64();
 
-  await conn.write(
-    "sendSCRAMClientFinalMessage",
-    `${clientFinalWithoutProof},p=${clientProof.toBase64()}`,
-  );
+  await conn.write({
+    type: "SASLResponse",
+    data: new TextEncoder().encode(
+      `${clientFinalWithoutProof},p=${clientProof.toBase64()}`,
+    ),
+  });
 }
 
 export async function handleAuthentication(
@@ -203,40 +205,45 @@ export async function handleAuthentication(
   const state: State = {};
 
   for await (const msg of conn.readUntilReady()) {
-    switch (msg.name) {
-      case "authenticationOk":
+    switch (msg.type) {
+      case "AuthenticationOk":
         return;
 
-      case "authenticationCleartextPassword": {
+      case "AuthenticationCleartextPassword": {
         await writePasswordPlain(conn, opts);
         break;
       }
 
-      case "authenticationMD5Password": {
-        const { salt } = zAuthenticationMD5Password.parse(msg);
+      case "AuthenticationMD5Password": {
+        const { salt } = msg;
         await writePasswordMessageMd5(conn, salt, opts);
         break;
       }
 
-      case "authenticationSASL": {
-        const { mechanisms } = zAuthenticationSASL.parse(msg);
+      case "AuthenticationSASL": {
+        const { mechanisms } = msg;
         if (!mechanisms.includes("SCRAM-SHA-256")) {
           throw new Error(
-            `Not implemented ${msg.name} ${mechanisms.join(" ")}`,
+            `Not implemented ${msg.type} ${mechanisms.join(" ")}`,
           );
         }
         await writeSendSASLInitialResponseMessageScramSha256(state, conn, opts);
         break;
       }
 
-      case "authenticationSASLContinue": {
-        const { data } = zAuthenticationSASLContinue.parse(msg);
-        await writeSendSCRAMClientFinalMessage(state, conn, opts, data);
+      case "AuthenticationSASLContinue": {
+        const { data } = msg;
+        await writeSendSCRAMClientFinalMessage(
+          state,
+          conn,
+          opts,
+          new TextDecoder().decode(data),
+        );
         break;
       }
 
-      case "authenticationSASLFinal": {
-        const { data } = zAuthenticationSASLFinal.parse(msg);
+      case "AuthenticationSASLFinal": {
+        const data = new TextDecoder().decode(msg.data);
         if (data !== `v=${state.serverSignature}`) {
           throw new Error("SCRAM-SHA-256 verification failure");
         }
@@ -247,7 +254,7 @@ export async function handleAuthentication(
       }
 
       default:
-        throw new Error(`Not implemented ${msg.name}`);
+        throw new Error(`Not implemented ${msg.type}`);
     }
   }
 }
