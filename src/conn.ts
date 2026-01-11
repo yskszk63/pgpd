@@ -7,6 +7,7 @@ import type { SslMode } from "./api.ts";
 import type { BackendMessage, ErrorResponse } from "./proto/msg.ts";
 import { serialize } from "./proto/ser.ts";
 import { DeserializeStream } from "./proto/stream.ts";
+import { ErrorResponseError } from "./proto/err.ts";
 
 async function wraptls(
   mode: Exclude<SslMode, "disable">,
@@ -155,13 +156,12 @@ export async function connect(
       }
 
       if (typeof err !== "undefined") {
-        switch (err.fields.find(([tag]) => tag === "S")?.[1]) {
+        const e = new ErrorResponseError(err);
+        switch (e.verbosity ?? e.severity) {
           case "FATAL":
           case "PANIC":
             broken = true;
-            throw new FatalError(err.fields.find(([tag]) => tag === "M")?.[1], {
-              cause: err,
-            });
+            throw new FatalError(e.message, { cause: e });
           default:
             break;
         }
@@ -176,7 +176,7 @@ export async function connect(
           value = r.value;
         } while (value.type !== "ReadyForQuery");
         state = "READY";
-        throw err;
+        throw e;
       }
     },
 
